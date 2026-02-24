@@ -1,0 +1,65 @@
+name: Run auto tests
+
+on:
+  workflow_call:
+
+env:
+  APP_DATABASE_HOST: db
+  APP_DATABASE_PORT: 5432
+  APP_DATABASE_USER: testuser
+  APP_DATABASE_PASSWORD: testpassword
+  APP_DATABASE_NAME: testdb
+
+  APP_REDIS_HOST: redis
+  APP_REDIS_PORT: 6379
+
+  APP_NATS_HOST: nats
+  APP_NATS_PORT: 4222
+
+jobs:
+  test:
+    name: Run service tests with pytest
+    runs-on: ubuntu-22.04
+    container: python:3.13
+    services:
+      db:
+        image: postgres:16
+        env:
+          TZ: UTC
+          POSTGRES_USER: ${{ env.APP_DATABASE_USER }}
+          POSTGRES_DB: ${{ env.APP_DATABASE_NAME }}
+          POSTGRES_PASSWORD: ${{ env.APP_DATABASE_PASSWORD }}
+        options: >-
+          --health-cmd "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis
+
+      nats:
+        image: bitnami/nats:2.10.18
+        env:
+          NATS_EXTRA_ARGS: -js
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: make develop-ci
+
+      - name: Run tests
+        run: make test-ci
+
+      - name: Get Cover
+        uses: orgoro/coverage@v3.2
+        with:
+            coverageFile: ./coverage.xml
+            token: ${{ secrets.GITHUB_TOKEN }}

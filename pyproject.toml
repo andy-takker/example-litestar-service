@@ -1,0 +1,146 @@
+[project]
+name = "library"
+version = "0.1.0"
+description = "Example web-service"
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+authors = [{ name = "Sergey Natalenko", email = "sergey.natalenko@mail.ru" }]
+license = "MIT"
+dependencies = [
+    "aiocache>=0.12.3",
+    "alembic>=1.16.5",
+    "asyncly>=0.3.4",
+    "asyncpg>=0.30.0",
+    "dishka>=1.6.0",
+    "dishka-faststream>=0.6.0",
+    "faststream>=0.5.48",
+    "litestar[jwt,prometheus,structlog]>=2.21.0",
+    "msgspec>=0.19.0",
+    "nats-py>=2.11.0",
+    "prometheus-client>=0.22.1",
+    "pydantic[email]>=2.11.7",
+    "redis>=6.4.0",
+    "sentry-sdk>=2.53.0",
+    "sqlalchemy[asyncio]>=2.0.43",
+    "structlog>=25.4.0",
+    "uvicorn>=0.41.0",
+    "uvloop>=0.21.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "coverage>=7.6.9",
+    "mypy>=1.12.1",
+    "ruff>=0.8.2",
+    "polyfactory>=2.18.1",
+    "pre-commit>=4.0.1",
+    "dirty-equals>=0.8.0",
+    "httpx>=0.28.1",
+    "pytest-repeat>=0.9.4",
+]
+
+[tool.uv]
+package = false
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+python_files = "test_*"
+python_functions = "test_*"
+python_classes = "TestSuite*"
+addopts = "-p no:cacheprovider"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+
+
+[tool.coverage.run]
+branch = true
+source = ["library"]
+command_line = "-m pytest"
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
+skip_empty = true
+omit = [
+    "*/migrations/*",
+    "*/__main__.py",
+]
+exclude_also = [
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == __main__:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+    "pass",
+]
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.ruff]
+line-length = 88
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+]
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = [
+    "BLE",
+    "C90",
+    "E",
+    "F",
+    "G",
+    "I",
+    "ICN",
+    "ISC",
+    "PLE",
+    "Q",
+    "RUF006",
+    "RUF100",
+    "T10",
+    "T20",
+    "TID",
+    "UP",
+    "W",
+]
+ignore = ["ISC001"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["library", "tests"]
+
+[tool.mypy]
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = false
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "asyncpg.*",
+    "aiocache.*",
+]
+ignore_missing_imports = true

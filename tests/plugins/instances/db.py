@@ -1,0 +1,78 @@
+from collections.abc import AsyncIterator
+from os import environ
+from types import SimpleNamespace
+
+import pytest
+from alembic.config import Config as AlembicConfig
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
+from library.adapters.database.config import DatabaseConfig
+from library.adapters.database.tables import BaseTable
+from library.adapters.database.uow import SqlalchemyUow
+from library.adapters.database.utils import (
+    create_engine,
+    create_sessionmaker,
+    make_alembic_config,
+)
+from tests.utils import run_async_migrations, truncate_tables
+
+
+@pytest.fixture
+def db_config() -> DatabaseConfig:
+    return DatabaseConfig(
+        host=environ.get("APP_DATABASE_HOST", "127.0.0.1"),
+        port=int(environ.get("APP_DATABASE_PORT", 5432)),
+        user=environ.get("APP_DATABASE_USER", "library"),
+        password=environ.get("APP_DATABASE_PASSWORD", "library"),
+        name=environ.get("APP_DATABASE_NAME", "library"),
+    )
+
+
+@pytest.fixture
+def alembic_config(db_config: DatabaseConfig) -> AlembicConfig:
+    cmd_options = SimpleNamespace(
+        config="alembic.ini",
+        name="alembic",
+        raiseerr=False,
+        x=None,
+    )
+    return make_alembic_config(cmd_options, pg_url=db_config.dsn)
+
+
+@pytest.fixture
+async def engine(
+    alembic_config: AlembicConfig,
+    db_config: DatabaseConfig,
+) -> AsyncIterator[AsyncEngine]:
+    await run_async_migrations(alembic_config, BaseTable.metadata, "head")
+    async with create_engine(
+        dsn=db_config.dsn,
+        pool_size=db_config.pool_size,
+        pool_timeout=db_config.pool_timeout,
+        max_overflow=db_config.max_overflow,
+        debug=True,
+    ) as engine:
+        await truncate_tables(engine)
+
+        yield engine
+
+
+@pytest.fixture
+def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return create_sessionmaker(engine=engine)
+
+
+@pytest.fixture
+def uow(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> SqlalchemyUow:
+    return SqlalchemyUow(session_factory=session_factory)
+
+
+@pytest.fixture
+async def session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    async with session_factory() as session:
+        yield session
+        await session.rollback()

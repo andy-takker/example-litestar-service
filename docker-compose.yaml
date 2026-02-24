@@ -1,0 +1,69 @@
+services:
+  db:
+    image: postgres:16
+    restart: on-failure:5
+    ports:
+      - "${APP_DATABASE_PORT}:5432"
+    environment:
+      - POSTGRES_USER=${APP_DATABASE_USER}
+      - POSTGRES_PASSWORD=${APP_DATABASE_PASSWORD}
+      - POSTGRES_DB=${APP_DATABASE_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DATABASE_USER} -d ${APP_DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:latest
+    ports:
+      - "${APP_REDIS_PORT}:6379"
+
+  broker:
+    image: bitnamilegacy/nats:2.10.18
+    environment:
+      NATS_EXTRA_ARGS: "-js --http_port 8222"
+    ports:
+      - 4222:4222
+      - 6222:6222
+      - 8222:8222
+
+  app:
+    image: andytakker/example-litestar-service:latest
+    command: python -m library
+    ports:
+      - "${APP_HTTP_PORT:-8080}:${APP_HTTP_PORT:-8080}"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - APP_TITLE=${APP_TITLE:-Library}
+      - APP_DESCRIPTION=${APP_DESCRIPTION:-Example web service for library}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+      - APP_DEBUG=${APP_DEBUG:-False}
+      - APP_SECRET=${APP_SECRET:-secret}
+
+      - APP_DATABASE_HOST=db
+      - APP_DATABASE_PORT=5432
+      - APP_DATABASE_USER=${APP_DATABASE_USER}
+      - APP_DATABASE_PASSWORD=${APP_DATABASE_PASSWORD}
+      - APP_DATABASE_NAME=${APP_DATABASE_NAME}
+      - APP_DATABASE_POOL_SIZE=${APP_DATABASE_POOL_SIZE:-10}
+      - APP_DATABASE_POOL_TIMEOUT=${APP_DATABASE_POOL_TIMEOUT:-10}
+
+      - APP_REDIS_HOST=redis
+      - APP_REDIS_PORT=6379
+
+      - APP_LOG_LEVEL=${APP_LOG_LEVEL:-INFO}
+      - APP_LOG_JSON=${APP_LOG_JSON:-true}
+
+      - APP_HTTP_PORT=${APP_HTTP_PORT:-8080}
+      - APP_HTTP_HOST=${APP_HTTP_HOST:-0.0.0.0}
+
+      - APP_NATS_HOST=broker
+      - APP_NATS_PORT=4222
+
+volumes:
+  postgres_data:
