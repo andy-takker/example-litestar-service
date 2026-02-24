@@ -39,7 +39,7 @@ jobs:
         image: redis
 
       nats:
-        image: bitnami/nats:2.10.18
+        image: bitnamilegacy/nats:2.10.18
         env:
           NATS_EXTRA_ARGS: -js
 
