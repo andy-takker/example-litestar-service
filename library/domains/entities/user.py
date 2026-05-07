@@ -1,10 +1,11 @@
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import NewType
 from uuid import UUID
 
 from library.application.entities import UNSET
+from library.domains.entities.permission import Permission
 
 UserId = NewType("UserId", UUID)
 
@@ -14,8 +15,19 @@ class User:
     id: UserId
     username: str
     email: str
+    is_superuser: bool
+    permissions: frozenset[Permission]
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class UserCredentials:
+    id: UserId
+    username: str
+    password_hash: str
+    is_superuser: bool
+    permissions: frozenset[Permission]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -34,6 +46,22 @@ class UserPagination:
 class CreateUser:
     username: str
     email: str
+    password_hash: str | None = None
+    is_superuser: bool = False
+    permissions: frozenset[Permission] = field(default_factory=frozenset)
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class RegisterUser:
+    username: str
+    email: str
+    password: str
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class LoginUser:
+    username: str
+    password: str
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -13,10 +13,12 @@ from library.application.exceptions import (
     EntityNotFoundException,
     LibraryException,
 )
+from library.domains.entities.permission import Permission
 from library.domains.entities.user import (
     CreateUser,
     UpdateUser,
     User,
+    UserCredentials,
     UserId,
     UserPaginationParams,
 )
@@ -37,12 +39,23 @@ class UserStorage:
         user = (await self._session.scalars(stmt)).first()
         if user is None:
             return None
-        return User(
+        return _row_to_user(user)
+
+    async def fetch_user_credentials_by_username(
+        self, *, username: str
+    ) -> UserCredentials | None:
+        stmt = select(UserTable).where(
+            UserTable.username == username, UserTable.deleted_at.is_(None)
+        )
+        user = (await self._session.scalars(stmt)).first()
+        if user is None or user.password_hash is None:
+            return None
+        return UserCredentials(
             id=UserId(user.id),
-            email=user.email,
             username=user.username,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
+            password_hash=user.password_hash,
+            is_superuser=user.is_superuser,
+            permissions=frozenset(Permission(p) for p in user.permissions),
         )
 
     async def exists_user_by_id(self, *, user_id: UserId) -> bool:
@@ -62,28 +75,13 @@ class UserStorage:
 
     async def fetch_user_list(self, *, params: UserPaginationParams) -> Sequence[User]:
         query = (
-            select(
-                UserTable.id,
-                UserTable.email,
-                UserTable.username,
-                UserTable.created_at,
-                UserTable.updated_at,
-            )
+            select(UserTable)
             .where(UserTable.deleted_at.is_(None))
             .limit(params.limit)
             .offset(params.offset)
         )
-        result = (await self._session.execute(query)).mappings().all()
-        return [
-            User(
-                id=UserId(result["id"]),
-                email=result["email"],
-                username=result["username"],
-                created_at=result["created_at"],
-                updated_at=result["updated_at"],
-            )
-            for result in result
-        ]
+        rows = (await self._session.scalars(query)).all()
+        return [_row_to_user(row) for row in rows]
 
     async def create_user(self, *, user: CreateUser) -> User:
         stmt = (
@@ -91,26 +89,17 @@ class UserStorage:
             .values(
                 email=user.email,
                 username=user.username,
+                password_hash=user.password_hash,
+                is_superuser=user.is_superuser,
+                permissions=[p.value for p in user.permissions],
             )
-            .returning(
-                UserTable.id,
-                UserTable.email,
-                UserTable.username,
-                UserTable.created_at,
-                UserTable.updated_at,
-            )
+            .returning(UserTable)
         )
         try:
-            result = (await self._session.execute(stmt)).mappings().one()
+            row = (await self._session.scalars(stmt)).one()
         except IntegrityError as e:
             self._raise_error(e)
-        return User(
-            id=UserId(result["id"]),
-            email=result["email"],
-            username=result["username"],
-            created_at=result["created_at"],
-            updated_at=result["updated_at"],
-        )
+        return _row_to_user(row)
 
     async def delete_user_by_id(self, *, user_id: UserId) -> None:
         stmt = (
@@ -125,25 +114,13 @@ class UserStorage:
             update(UserTable)
             .where(UserTable.id == update_user.id)
             .values(**update_user.to_dict())
-            .returning(
-                UserTable.id,
-                UserTable.email,
-                UserTable.username,
-                UserTable.created_at,
-                UserTable.updated_at,
-            )
+            .returning(UserTable)
         )
         try:
-            result = (await self._session.execute(stmt)).mappings().one()
+            row = (await self._session.scalars(stmt)).one()
         except NoResultFound as e:
             raise EntityNotFoundException(entity=User, entity_id=update_user.id) from e
-        return User(
-            id=UserId(result["id"]),
-            email=result["email"],
-            username=result["username"],
-            created_at=result["created_at"],
-            updated_at=result["updated_at"],
-        )
+        return _row_to_user(row)
 
     def _raise_error(self, e: DBAPIError) -> NoReturn:
         constraint = e.__cause__.__cause__.constraint_name  # type: ignore[union-attr]
@@ -152,3 +129,15 @@ class UserStorage:
             raise EntityAlreadyExistsException(message="User already exists") from e
 
         raise LibraryException(message="Unknown error") from e
+
+
+def _row_to_user(row: UserTable) -> User:
+    return User(
+        id=UserId(row.id),
+        email=row.email,
+        username=row.username,
+        is_superuser=row.is_superuser,
+        permissions=frozenset(Permission(p) for p in row.permissions),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )

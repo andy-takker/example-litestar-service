@@ -31,8 +31,14 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: mypy ./library/ --config-file ./pyproject.toml
-        language: python
+        entry: .venv/bin/mypy ./library/ --config-file ./pyproject.toml
+        language: system
+        require_serial: true
+        pass_filenames: false
+      - id: lint-imports
+        name: lint-imports
+        entry: .venv/bin/lint-imports
+        language: system
         require_serial: true
         pass_filenames: false
 

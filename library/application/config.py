@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import timedelta
 from os import environ
 
 
@@ -25,3 +26,25 @@ class HttpConfig:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class SecretConfig:
     secret: str = field(default_factory=lambda: environ.get("APP_SECRET", "secret"))
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class AuthConfig:
+    access_token_ttl_seconds: int = field(
+        default_factory=lambda: int(
+            environ.get("APP_AUTH_ACCESS_TOKEN_TTL_SECONDS", "900")
+        )
+    )
+    refresh_token_ttl_seconds: int = field(
+        default_factory=lambda: int(
+            environ.get("APP_AUTH_REFRESH_TOKEN_TTL_SECONDS", "604800")
+        )
+    )
+
+    @property
+    def access_token_ttl(self) -> timedelta:
+        return timedelta(seconds=self.access_token_ttl_seconds)
+
+    @property
+    def refresh_token_ttl(self) -> timedelta:
+        return timedelta(seconds=self.refresh_token_ttl_seconds)

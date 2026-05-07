@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from dishka import make_async_container
 from dishka.integrations.litestar import setup_dishka
+from faststream.nats import NatsBroker
 from litestar import Litestar
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
@@ -12,18 +13,22 @@ from litestar.middleware.rate_limit import RateLimitConfig
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import RedocRenderPlugin, SwaggerRenderPlugin
 from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
+from passlib.context import CryptContext
 
 from library.adapters.database.config import DatabaseConfig
 from library.adapters.database.di import DatabaseProvider
+from library.adapters.healthcheck.di import HealthCheckProvider
+from library.adapters.nats.broker import create_broker
 from library.adapters.open_library.config import OpenLibraryConfig
 from library.adapters.open_library.di import OpenLibraryProvider
 from library.adapters.redis.config import RedisConfig
 from library.adapters.redis.di import RedisProvider
-from library.application.config import AppConfig
+from library.application.config import AppConfig, AuthConfig
 from library.application.exceptions import (
     EmptyPayloadException,
     EntityAlreadyExistsException,
     EntityNotFoundException,
+    InvalidCredentialsException,
     LibraryException,
 )
 from library.application.logging import setup_logging
@@ -31,15 +36,22 @@ from library.application.sentry import setup_sentry
 from library.config import Config
 from library.domains.di import DomainProvider
 from library.presentors.faststream.app_factory import get_faststream_app
+from library.presentors.rest.middleware.request_id import RequestIdMiddleware
 from library.presentors.rest.routers.api.router import router as api_router
 from library.presentors.rest.routers.api.v1.exception_handlers import (
     empty_payload_exception_handler,
     entity_already_exists_exception_handler,
     entity_not_found_exception_handler,
     http_exception_handler,
+    invalid_credentials_exception_handler,
     library_exception_handler,
     validation_exception_handler,
 )
+from library.presentors.rest.routers.auth.controller import (
+    AuthController,
+    make_jwt_auth,
+)
+from library.presentors.rest.routers.health.controller import HealthController
 
 log = logging.getLogger(__name__)
 
@@ -51,9 +63,11 @@ def get_litestar_app(config: Config) -> Litestar:
     )
 
     if config.sentry.use_sentry:
-        setup_sentry(dsn=config.sentry.dsn, env=config.sentry.env)
+        setup_sentry(config=config.sentry, release=config.app.version)
 
-    faststream_app = get_faststream_app(config=config)
+    broker = create_broker(config=config.nats)
+    faststream_app = get_faststream_app(broker=broker, config=config)
+    jwt_auth = make_jwt_auth(secret=config.secret.secret)
 
     @asynccontextmanager
     async def lifespan(app: Litestar) -> AsyncIterator[None]:
@@ -76,10 +90,17 @@ def get_litestar_app(config: Config) -> Litestar:
         lifespan=[lifespan],
         route_handlers=[
             PrometheusController,
+            HealthController,
+            AuthController,
             api_router,
         ],
+        on_app_init=[jwt_auth.on_app_init],
         logging_config=None,
-        middleware=[prometheus_config.middleware, rate_limit_config.middleware],
+        middleware=[
+            RequestIdMiddleware,
+            prometheus_config.middleware,
+            rate_limit_config.middleware,
+        ],
         exception_handlers={
             ValidationException: validation_exception_handler,
             HTTPException: http_exception_handler,
@@ -87,6 +108,7 @@ def get_litestar_app(config: Config) -> Litestar:
             EntityNotFoundException: entity_not_found_exception_handler,
             EmptyPayloadException: empty_payload_exception_handler,
             EntityAlreadyExistsException: entity_already_exists_exception_handler,
+            InvalidCredentialsException: invalid_credentials_exception_handler,
         },
         openapi_config=OpenAPIConfig(
             title=config.app.title,
@@ -113,14 +135,20 @@ def get_litestar_app(config: Config) -> Litestar:
         DomainProvider(),
         OpenLibraryProvider(),
         RedisProvider(),
+        HealthCheckProvider(),
         context={
             AppConfig: config.app,
+            AuthConfig: config.auth,
             DatabaseConfig: config.database,
             OpenLibraryConfig: config.open_library,
             RedisConfig: config.redis,
+            NatsBroker: broker,
+            CryptContext: CryptContext(schemes=["argon2"], deprecated="auto"),
         },
     )
     setup_dishka(container=container, app=app)
+
+    app.state.jwt_auth = jwt_auth
 
     log.info("REST service app configured")
     return app

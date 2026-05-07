@@ -12,19 +12,6 @@ class SentryEnv(StrEnum):
     PROD = "PROD"
 
 
-def setup_sentry(
-    dsn: str,
-    env: SentryEnv = SentryEnv.DEV,
-) -> None:
-    if not dsn:
-        raise ValueError("APP_SENTRY_DSN is not set")
-    sentry_sdk.init(
-        dsn=dsn,
-        integrations=[AsyncioIntegration()],
-        environment=env,
-    )
-
-
 @dataclass(frozen=True, kw_only=True, slots=True)
 class SentryConfig:
     dsn: str = field(default_factory=lambda: environ.get("APP_SENTRY_DSN", ""))
@@ -35,4 +22,27 @@ class SentryConfig:
         default_factory=lambda: SentryEnv(
             environ.get("APP_SENTRY_ENV", SentryEnv.DEV).upper()
         )
+    )
+    traces_sample_rate: float = field(
+        default_factory=lambda: float(
+            environ.get("APP_SENTRY_TRACES_SAMPLE_RATE", "0.0")
+        )
+    )
+    profiles_sample_rate: float = field(
+        default_factory=lambda: float(
+            environ.get("APP_SENTRY_PROFILES_SAMPLE_RATE", "0.0")
+        )
+    )
+
+
+def setup_sentry(config: SentryConfig, release: str | None = None) -> None:
+    if not config.dsn:
+        raise ValueError("APP_SENTRY_DSN is not set")
+    sentry_sdk.init(
+        dsn=config.dsn,
+        integrations=[AsyncioIntegration()],
+        environment=config.env,
+        traces_sample_rate=config.traces_sample_rate,
+        profiles_sample_rate=config.profiles_sample_rate,
+        release=release,
     )

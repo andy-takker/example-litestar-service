@@ -49,6 +49,8 @@ async def test_fetch_user_by_id__ok(
         id=user.id,
         username=user.username,
         email=user.email,
+        is_superuser=user.is_superuser,
+        permissions=frozenset(),
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
@@ -93,6 +95,8 @@ async def test_fetch_user_list__ok(
             id=user.id,
             username=user.username,
             email=user.email,
+            is_superuser=user.is_superuser,
+            permissions=frozenset(),
             created_at=user.created_at,
             updated_at=user.updated_at,
         )
@@ -113,6 +117,8 @@ async def test_user_list__with_offset(
                 id=user.id,
                 username=user.username,
                 email=user.email,
+                is_superuser=user.is_superuser,
+                permissions=frozenset(),
                 created_at=user.created_at,
                 updated_at=user.updated_at,
             )
@@ -133,6 +139,8 @@ async def test_user_list__with_limit(
             id=user.id,
             username=user.username,
             email=user.email,
+            is_superuser=user.is_superuser,
+            permissions=frozenset(),
             created_at=user.created_at,
             updated_at=user.updated_at,
         )
@@ -169,6 +177,8 @@ async def test_create_user__ok(
         id=UserId(db_user.id),
         username=db_user.username,
         email=db_user.email,
+        is_superuser=db_user.is_superuser,
+        permissions=frozenset(),
         created_at=db_user.created_at,
         updated_at=db_user.updated_at,
     )

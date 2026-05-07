@@ -14,6 +14,7 @@ def main() -> None:
         port=config.http.port,
         forwarded_allow_ips="*",
         log_config=None,
+        loop="uvloop",
     )
 
 

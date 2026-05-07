@@ -4,7 +4,7 @@ from library.adapters.database.config import DatabaseConfig
 from library.adapters.nats.config import NatsConfig
 from library.adapters.open_library.config import OpenLibraryConfig
 from library.adapters.redis.config import RedisConfig
-from library.application.config import AppConfig, HttpConfig, SecretConfig
+from library.application.config import AppConfig, AuthConfig, HttpConfig, SecretConfig
 from library.application.logging import LoggingConfig
 from library.application.sentry import SentryConfig
 
@@ -12,6 +12,7 @@ from library.application.sentry import SentryConfig
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Config:
     app: AppConfig = field(default_factory=lambda: AppConfig())
+    auth: AuthConfig = field(default_factory=lambda: AuthConfig())
     database: DatabaseConfig = field(default_factory=lambda: DatabaseConfig())
     http: HttpConfig = field(default_factory=HttpConfig)
     log: LoggingConfig = field(default_factory=lambda: LoggingConfig())

@@ -7,6 +7,7 @@ from library.application.exceptions import (
     EmptyPayloadException,
     EntityAlreadyExistsException,
     EntityNotFoundException,
+    InvalidCredentialsException,
     LibraryException,
 )
 from library.presentors.rest.routers.api.v1.schemas.common import StatusResponseSchema
@@ -67,6 +68,16 @@ def entity_already_exists_exception_handler(
 ) -> Response[StatusResponseSchema]:
     return exception_json_response(
         status_code=HTTPStatus.CONFLICT,
+        message=exc.message,
+    )
+
+
+def invalid_credentials_exception_handler(
+    request: Request,
+    exc: InvalidCredentialsException,
+) -> Response[StatusResponseSchema]:
+    return exception_json_response(
+        status_code=HTTPStatus.UNAUTHORIZED,
         message=exc.message,
     )
 

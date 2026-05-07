@@ -17,6 +17,7 @@ dependencies = [
     "litestar[jwt,prometheus,structlog]>=2.21.0",
     "msgspec>=0.19.0",
     "nats-py>=2.11.0",
+    "passlib[argon2]>=1.7.4",
     "prometheus-client>=0.22.1",
     "pydantic[email]>=2.11.7",
     "redis>=6.4.0",
@@ -40,6 +41,8 @@ dev = [
     "dirty-equals>=0.8.0",
     "httpx>=0.28.1",
     "pytest-repeat>=0.9.4",
+    "import-linter>=2.0",
+    "types-passlib>=1.7",
 ]
 
 [tool.uv]
@@ -144,3 +147,31 @@ module = [
     "aiocache.*",
 ]
 ignore_missing_imports = true
+
+[tool.importlinter]
+root_package = "library"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Production must not import tests"
+type = "forbidden"
+source_modules = ["library"]
+forbidden_modules = ["tests"]
+
+[[tool.importlinter.contracts]]
+name = "Domain must not import adapters"
+type = "forbidden"
+source_modules = ["library.domains"]
+forbidden_modules = ["library.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "Domain must not import presentors"
+type = "forbidden"
+source_modules = ["library.domains"]
+forbidden_modules = ["library.presentors"]
+
+[[tool.importlinter.contracts]]
+name = "Adapters must not import presentors"
+type = "forbidden"
+source_modules = ["library.adapters"]
+forbidden_modules = ["library.presentors"]

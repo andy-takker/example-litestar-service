@@ -1,4 +1,5 @@
 from dishka import Provider, Scope, provide
+from passlib.context import CryptContext
 
 from library.domains.interfaces.clients.open_library import IOpenLibraryClient
 from library.domains.interfaces.storages.book import IBookStorage
@@ -6,6 +7,8 @@ from library.domains.interfaces.storages.user import IUserStorage
 from library.domains.services.book import BookService
 from library.domains.services.user import UserService
 from library.domains.uow import AbstractUow
+from library.domains.use_cases.commands.auth.login_user import LoginUserCommand
+from library.domains.use_cases.commands.auth.register_user import RegisterUserCommand
 from library.domains.use_cases.commands.book.create_book import CreateBookCommand
 from library.domains.use_cases.commands.book.delete_book_by_id import (
     DeleteBookByIdCommand,
@@ -98,6 +101,28 @@ class DomainProvider(Provider):
         self, uow: AbstractUow, user_service: UserService
     ) -> UpdateUserByIdCommand:
         return UpdateUserByIdCommand(uow=uow, user_service=user_service)
+
+    @provide()
+    def register_user_command(
+        self,
+        uow: AbstractUow,
+        user_storage: IUserStorage,
+        crypt_context: CryptContext,
+    ) -> RegisterUserCommand:
+        return RegisterUserCommand(
+            uow=uow, user_storage=user_storage, crypt_context=crypt_context
+        )
+
+    @provide()
+    def login_user_command(
+        self,
+        uow: AbstractUow,
+        user_storage: IUserStorage,
+        crypt_context: CryptContext,
+    ) -> LoginUserCommand:
+        return LoginUserCommand(
+            uow=uow, user_storage=user_storage, crypt_context=crypt_context
+        )
 
     @provide()
     def upload_books_command(

@@ -5,6 +5,7 @@ from library.domains.entities.user import (
     CreateUser,
     UpdateUser,
     User,
+    UserCredentials,
     UserId,
     UserPaginationParams,
 )
@@ -12,6 +13,10 @@ from library.domains.entities.user import (
 
 class IUserStorage(Protocol):
     async def fetch_user_by_id(self, *, user_id: UserId) -> User | None: ...
+
+    async def fetch_user_credentials_by_username(
+        self, *, username: str
+    ) -> UserCredentials | None: ...
 
     async def count_users(self, *, params: UserPaginationParams) -> int: ...
 

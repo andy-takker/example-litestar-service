@@ -160,3 +160,6 @@ cython_debug/
 .idea/
 .vscode/
 .DS_Store
+
+# Drafts that should not be committed to the repo
+HABR_LITESTAR_TUTORIAL.md

@@ -25,8 +25,10 @@ async def setup_stream(broker: NatsBroker) -> None:
 
 
 @pytest.fixture
-async def faststream_app(config: Config, setup_stream, clear_redis_cache) -> FastStream:
-    app = get_faststream_app(config=config)
+async def faststream_app(
+    broker: NatsBroker, config: Config, setup_stream, clear_redis_cache
+) -> AsyncIterator[FastStream]:
+    app = get_faststream_app(broker=broker, config=config)
     yield app
     await app.stop()
 
