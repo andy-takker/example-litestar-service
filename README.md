@@ -1,100 +1,215 @@
 # Example Litestar Service
 
-Example Litestar web service for internet library with:
+A reference Python web service built on [Litestar](https://github.com/litestar-org/litestar) — a working template for production REST + async services with clean architecture, observability, JWT auth and RBAC.
 
-- clean architecture with interfaces, layers and entities
-- Dependency Injection with [dishka](https://github.com/reagento/dishka)
-- REST API based on [litestar](https://github.com/litestar-org/litestar)
-- async API based on [faststream](https://github.com/ag2ai/faststream) with CORS, prometheus, structlog, rate limit etc.
-- auto tests with [pytest](https://docs.pytest.org/en/stable/) (also with integration tests for external API with [asyncly](https://github.com/andy-takker/asyncly))
-- formatting and linting with [ruff](https://github.com/astral-sh/ruff) and [mypy](https://github.com/python/mypy)
-- Dockerfile with best practices
-- CI/CD with Github Workflows with separated actions
-- [pre-commit](https://github.com/pre-commit/pre-commit) features
+The service implements a small "library" domain (books, users, OpenLibrary integration, async book upload via NATS) and is meant to be cloned and adapted under your project, not used as-is.
 
-## Working with repos
+## Features
 
-### How to install dependencies?
+- **Layered architecture** (`domains` / `adapters` / `presentors` / `application`) with import boundaries enforced by [import-linter](https://github.com/seddonym/import-linter)
+- **DI** via [dishka](https://github.com/reagento/dishka) (App + Request scopes, managed lifecycle for engine / Redis / HTTP / NATS broker)
+- **Two transports in one app**: REST (Litestar) + async pub/sub ([FastStream](https://github.com/ag2ai/faststream) + NATS JetStream)
+- **JWT auth**: `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/me` — access + refresh token pair, TTLs configurable via env
+- **RBAC**: `Permission` enum, `AuthUser` entity, `permission_guard` / `any_permission_guard` for route-level protection
+- **Password hashing** with [passlib + argon2](https://passlib.readthedocs.io/en/stable/lib/passlib.hash.argon2.html)
+- **Health probes**: `/health/live` (liveness) and `/health/ready` (parallel Postgres / Redis / NATS checks with timeouts) backed by a dedicated adapter
+- **Observability**: Prometheus on `/metrics`, structlog (console in dev, JSON in prod), Sentry with traces and profiles sampling
+- **Request correlation**: middleware sets `X-Request-ID`, binds it to `structlog.contextvars` and echoes it back in the response
+- **Database**: SQLAlchemy + asyncpg + alembic, UoW pattern around async sessions
+- **Hybrid serialization**: Pydantic at the REST boundary, msgspec inside adapters (no hard coupling to Pydantic)
+- **Testing diamond**: unit tests for domain services with `FakeStorage`, integration tests for DB / REST / NATS against real Postgres + Redis + NATS in docker-compose, ~94% coverage
+- **Tooling**: ruff, mypy, import-linter, pytest + coverage, pre-commit, uv
 
-Creating new venv in project folder and install all dependencies with poetry:
+## Quick start
+
+```bash
+make develop                                              # create .venv via uv, install deps, set up pre-commit
+make local                                                # start Postgres + Redis + NATS via docker-compose (foreground)
+# in another terminal:
+set -a && source .env.dev && set +a                       # load default env
+.venv/bin/python -m library.adapters.database upgrade head  # apply migrations
+.venv/bin/python -m library                               # serve on http://127.0.0.1:8000
+```
+
+OpenAPI UIs:
+
+- <http://127.0.0.1:8000/docs/swagger>
+- <http://127.0.0.1:8000/docs/redoc>
+
+## Working with the repo
+
+### Install dependencies
+
+Creates a fresh `.venv` via `uv sync` and installs pre-commit hooks:
 
 ```bash
 make develop
 ```
 
-### How to run dev containers for testing?
+### Run dev containers
 
-Start postgres container described in `docker-compose.dev.yaml` from scratch:
+Starts Postgres, Redis and NATS from `docker-compose.dev.yaml`:
 
 ```bash
 make local
 ```
 
-### How to run tests?
-
-The tests must be run after the dependencies are installed and when the `make local` process is running separately:
+Stop and clean up volumes:
 
 ```bash
-pytest -vx ./tests
+make local-down
 ```
 
-### How to apply all actual migrations?
+### Run tests
 
-Remember that to connect to the database, you must specify the environment
-variables `APP_DATABASE_HOST`, `APP_DATABASE_PORT`, `APP_DATABASE_USER`,
-`APP_DATABASE_PASSWORD`, `APP_DATABASE_NAME`.
+DB containers must be up (`make local` running in another terminal):
 
 ```bash
-python -m library.adapters.database upgrade head
+.venv/bin/pytest -vx ./tests
 ```
 
-### How to generate new migration?
-
-Don't forget to apply migrations with the above command first.
+For CI-style with coverage report:
 
 ```bash
-python -m library.adapters.database revision --autogenerate -m "Your message"
+make test-ci
 ```
 
-### How to work with repo in CI?
+The minimum coverage is set to 80% in `pyproject.toml`; current coverage is above 90%.
 
-Separate commands are written in the `Makefile` to run dependency
-installation, checks, and testing. They have the suffix `-ci`
+### Run linters
 
 ```bash
-make develop-ci  # install dependencies
-make lint-ci     # run linters - ruff and mypy
-make test-ci     # run tests with pytest and coverage
+make lint-ci    # ruff + mypy + import-linter
 ```
+
+Or individually:
+
+```bash
+.venv/bin/ruff check ./library
+.venv/bin/mypy --config-file ./pyproject.toml ./library
+.venv/bin/lint-imports
+```
+
+`import-linter` enforces these architectural contracts:
+
+- `library` must not import `tests`
+- `library.domains` must not import `library.adapters`
+- `library.domains` must not import `library.presentors`
+- `library.adapters` must not import `library.presentors`
+
+### Database migrations
+
+Apply all migrations to head:
+
+```bash
+.venv/bin/python -m library.adapters.database upgrade head
+```
+
+Generate a new migration after changing tables in [library/adapters/database/tables.py](library/adapters/database/tables.py):
+
+```bash
+.venv/bin/python -m library.adapters.database revision --autogenerate -m "your message"
+```
+
+Both commands require `APP_DATABASE_*` env vars to point at a running Postgres.
+
+### CI workflow
+
+```bash
+make develop-ci  # install deps without venv (CI runs as root in container)
+make lint-ci     # ruff + mypy + import-linter
+make test-ci     # pytest with junit + coverage report
+```
+
+## Configuration
+
+All configuration goes through environment variables, parsed by `dataclass`-based config objects in [library/application/config.py](library/application/config.py) and per-adapter `config.py` files. A working set of defaults for local development is in [.env.dev](.env.dev).
+
+Key variables:
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `APP_DATABASE_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAME` | from `.env.dev` | Postgres connection |
+| `APP_REDIS_HOST` / `APP_REDIS_PORT` | `127.0.0.1` / `6379` | |
+| `APP_NATS_HOST` / `APP_NATS_PORT` | `127.0.0.1` / `4222` | |
+| `APP_HTTP_HOST` / `APP_HTTP_PORT` | `0.0.0.0` / `8080` | |
+| `APP_SECRET` | `secret` | JWT signing secret. **Must be set in prod.** |
+| `APP_AUTH_ACCESS_TOKEN_TTL_SECONDS` | `900` | 15 minutes |
+| `APP_AUTH_REFRESH_TOKEN_TTL_SECONDS` | `604800` | 7 days |
+| `APP_LOG_LEVEL` | `DEBUG` | |
+| `APP_LOG_JSON` | `true` | JSON logs in prod, set to `false` for console output |
+| `APP_SENTRY_USE` | `False` | |
+| `APP_SENTRY_DSN` | empty | |
+| `APP_SENTRY_TRACES_SAMPLE_RATE` | `0.0` | |
+| `APP_SENTRY_PROFILES_SAMPLE_RATE` | `0.0` | |
 
 ## Routes
 
-List of routes:
+OpenAPI is the source of truth — open <http://127.0.0.1:8000/docs/swagger> after starting the service. Reference list:
+
+### Auth
+
+```text
+POST    /auth/register             Register a new user (username + email + password)
+POST    /auth/login                Log in by username + password, returns access + refresh
+POST    /auth/refresh              Refresh access + refresh token pair
+GET     /auth/me                   Get current user from Bearer access token
+GET     /auth/admin-zone           Demo of permission_guard ([Permission.MANAGE_BOOKS])
+```
 
 ### Books
 
-```api
-GET     /api/v1/books/            Fetch Books
-POST    /api/v1/books/            Create Book
-GET     /api/v1/books/{book_id}/  Fetch Book by ID
-PATCH   /api/v1/books/{book_id}/  Update Book by ID
-DELETE  /api/v1/books/{book_id}/  Delete Book by ID
+```text
+GET     /api/v1/books/             Fetch books (paginated)
+POST    /api/v1/books/             Create a book
+GET     /api/v1/books/{book_id}/   Fetch book by ID
+PATCH   /api/v1/books/{book_id}/   Update book by ID
+DELETE  /api/v1/books/{book_id}/   Delete book by ID
 ```
 
 ### Users
 
-```api
-GET     /api/v1/users/             Fetch Users
-POST    /api/v1/users/             Create Book
-GET     /api/v1/users/{user_id}/   Fetch User by ID
-PATCH   /api/v1/users/{user_id}/   Update User by ID
-DELETE  /api/v1/users/{user_id}/   Delete User by ID
+```text
+GET     /api/v1/users/             Fetch users (paginated)
+POST    /api/v1/users/             Create user (admin CRUD; no password is set)
+GET     /api/v1/users/{user_id}/   Fetch user by ID
+PATCH   /api/v1/users/{user_id}/   Update user by ID
+DELETE  /api/v1/users/{user_id}/   Delete user by ID
 ```
 
-### User Books
+### OpenLibrary
 
-```api
-GET     /api/v1/users/{user_id}/books/                   Get user books
-POST    /api/v1/users/{user_id}/books/{book_id}/issue/   Issue Book to User
-POST    /api/v1/users/{user_id}/books/{book_id}/return/  Return Book from User
+```text
+GET     /api/v1/open-library/search?query=...   Search books on OpenLibrary
 ```
+
+### Service / observability
+
+```text
+GET     /metrics                   Prometheus metrics
+GET     /health/live               Liveness probe (always 200 while process is alive)
+GET     /health/ready              Readiness probe (Postgres + Redis + NATS, 200 or 503)
+GET     /docs                      OpenAPI JSON
+GET     /docs/swagger              Swagger UI
+GET     /docs/redoc                Redoc UI
+```
+
+## Project layout
+
+```text
+library/
+├── application/        Logging, exceptions, base config, Sentry setup
+├── adapters/           Outbound: database, redis, nats, open_library, healthcheck
+├── domains/            Entities, interfaces, services, use cases (no infra imports)
+└── presentors/
+    ├── rest/           Litestar app, controllers, middleware, route handlers
+    └── faststream/     NATS subscribers
+tests/
+├── domains/services/   Unit tests of domain services with FakeStorage
+├── adapters/           Integration tests against real Postgres / Redis / HTTP
+└── presentors/         REST + FastStream integration tests
+```
+
+## License
+
+MIT.
